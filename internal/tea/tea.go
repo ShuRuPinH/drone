@@ -7,6 +7,8 @@ import (
 	"awesomeProject/internal/utils"
 	"bytes"
 	"fmt"
+	"github.com/charmbracelet/bubbles/help"
+	"github.com/charmbracelet/bubbles/key"
 	"log"
 	"strings"
 	"time"
@@ -48,12 +50,17 @@ type (
 type model struct {
 	viewport    viewport.Model
 	statview    viewport.Model
+	helpview    viewport.Model
 	messages    []string
 	textarea    textarea.Model
 	senderStyle lipgloss.Style
 	err         error
 	cmdLine     chan []byte
 	logLine     chan []byte
+	//
+	help     help.Model
+	quitting bool
+	keys     keyMap
 }
 
 func initialModel(cmdLine chan []byte, logLine chan []byte) *model {
@@ -78,11 +85,16 @@ func initialModel(cmdLine chan []byte, logLine chan []byte) *model {
 	sv := viewport.New(30, 3)
 	sv.SetContent(`Last drone response...`)
 
+	hv := viewport.New(30, 10)
+
 	ta.KeyMap.InsertNewline.SetEnabled(false)
 
 	return &model{
+		help:        help.New(),
+		keys:        keys,
 		statview:    sv,
 		viewport:    vp,
+		helpview:    hv,
 		messages:    []string{},
 		textarea:    ta,
 		senderStyle: lipgloss.NewStyle().Foreground(lipgloss.Color("#008800")),
@@ -121,6 +133,22 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 			m.addLogMess([]byte(m.textarea.Value()))
 			m.textarea.Reset()
+
+		}
+		switch {
+		case key.Matches(msg, m.keys.Up):
+			m.messageProcess("up")
+			m.textarea.Reset()
+
+		case key.Matches(msg, m.keys.Down):
+			m.messageProcess("down")
+			m.textarea.Reset()
+		case key.Matches(msg, m.keys.Help):
+
+		case key.Matches(msg, m.keys.Quit):
+			m.quitting = true
+			stopChan = true
+			return m, tea.Quit
 		}
 
 	// We handle errors just like any other message
@@ -143,37 +171,18 @@ func (m *model) addLogMess(data []byte) {
 }
 
 func (m *model) View() string {
-	return lipgloss.JoinHorizontal(0, m.textarea.View(),
-		m.viewport.View(), "\t\t\t\t", m.statview.View()) + "\n\n"
-}
-
-func (m *model) messageProcess(cmd string) {
-	switch strings.TrimSpace(cmd) {
-	case "b4":
-		m.cmdLine <- b4
-	case "i":
-		m.cmdLine <- b2
-	case "d":
-		m.cmdLine <- def
-	case "up":
-		m.cmdLine <- t1
-	case "55":
-		m.cmdLine <- b2
-		m.cmdLine <- def
-		m.cmdLine <- t1
-	case "77":
-		m.cmdLine <- b2
-		m.cmdLine <- def
-		for i := 89; i < 233; i += 10 {
-			m.cmdLine <- []byte{0x03, 0x66, 0x80, 0x80, byte(i), 0x80, 0x00, byte((i + 128) % 256), 0x99}
-		}
-		for i := 233; i < 30; i -= 10 {
-			m.cmdLine <- []byte{0x03, 0x66, 0x80, 0x80, byte(i), 0x80, 0x00, byte((i - 128) % 256), 0x99}
-		}
-
-	default:
-		m.cmdLine <- []byte{0x00, 0x01, 0x02}
+	///
+	if m.quitting {
+		return "Bye!\n"
 	}
+	///
+
+	// MainView
+	mainView := lipgloss.JoinHorizontal(0, m.textarea.View(),
+		m.viewport.View(), "\t\t\t\t", m.statview.View()) + "\n"
+
+	return mainView + m.help.View(m.keys)
+
 }
 
 func (m *model) listen() {
@@ -186,7 +195,6 @@ func (m *model) listen() {
 			} else {
 				m.addLogMess(logText)
 			}
-
 		}
 	}
 }

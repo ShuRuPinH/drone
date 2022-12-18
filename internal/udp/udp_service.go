@@ -26,7 +26,7 @@ func InitUdp(cmdLine chan []byte, logLine chan []byte) {
 	go func() {
 		for {
 			s.cl168.sendData(b4)
-			time.Sleep(time.Millisecond * 300)
+			time.Sleep(time.Millisecond * 500)
 		}
 	}()
 
